@@ -152,8 +152,8 @@ Design choices worth calling out:
 ### Install
 
 ```powershell
-git clone <your-repo-url> Technical_Assessment
-cd Technical_Assessment
+git clone <your-repo-url> Technical-Assessment
+cd Technical-Assessment
 
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1        # macOS/Linux: source .venv/bin/activate
