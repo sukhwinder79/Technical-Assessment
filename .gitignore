@@ -1,8 +1,16 @@
+# ---- secrets: never commit -------------------------------------------------
 .env
-credentials/
+# Ignore the CONTENTS, not the directory. `credentials/` would exclude the
+# folder itself, and git cannot re-include a file inside an excluded directory —
+# so the `!` line below would silently do nothing and a fresh clone would have
+# no credentials/ folder at all.
+credentials/*
 !credentials/.gitkeep
+
+# ---- generated at runtime --------------------------------------------------
 workspace/
 logs/
+reports/
 .agent_memory/
 
 __pycache__/
