@@ -1,0 +1,47 @@
+# ============================================================================
+#  Tool configuration
+#
+#  The agent discovers tools from the registry at runtime. This file lets you
+#  turn individual tools on/off and override their defaults WITHOUT touching
+#  any code — the agent simply sees a different toolbox and re-plans around it.
+#
+#  Try it: set `excel_import_csv.enabled: false` and re-run the same prompt.
+#  The agent will report Excel as unavailable and still complete the Google
+#  Sheets half of the workflow.
+# ============================================================================
+
+defaults:
+  # Retries applied to any tool that does not override `max_retries`.
+  max_retries: 2
+
+tools:
+  generate_employee_csv:
+    enabled: true
+    description_suffix: >-
+      Always call this first when the user asks for sample/employee data.
+
+  convert_spreadsheet:
+    enabled: true
+
+  read_csv_preview:
+    enabled: true
+
+  excel_probe:
+    enabled: true
+
+  excel_import_csv:
+    enabled: true
+    # COM automation can fail transiently if Excel is mid-startup.
+    max_retries: 2
+
+  excel_verify_workbook:
+    enabled: true
+
+  google_sheets_import:
+    enabled: true
+    # Network calls: worth a couple of extra attempts.
+    max_retries: 3
+
+  google_sheets_verify:
+    enabled: true
+    max_retries: 3

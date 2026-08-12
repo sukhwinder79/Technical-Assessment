@@ -1,0 +1,45 @@
+# =============================================================================
+#  Runtime dependencies — the single source of truth.
+#
+#  pyproject.toml reads this file via [tool.setuptools.dynamic], so the list
+#  lives in exactly one place:  pip install -r requirements.txt
+#                              pip install -e .          <- same list
+#  Test-only packages are in requirements-dev.txt / the `dev` extra.
+# =============================================================================
+
+# ---- LLM providers ----------------------------------------------------------
+# Groq (free tier) / OpenAI / OpenRouter / Together / Ollama all speak the
+# OpenAI chat-completions format, so one SDK covers them.
+openai>=1.40.0
+# Claude, used when LLM_PROVIDER=anthropic.
+anthropic>=0.69.0
+
+# ---- Agent core -------------------------------------------------------------
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+python-dotenv>=1.0.1
+PyYAML>=6.0.1
+structlog>=24.1.0
+rich>=13.7.0
+typer>=0.12.3
+
+# ---- Spreadsheet formats ----------------------------------------------------
+openpyxl>=3.1.2          # .xlsx read/write (also the non-Windows Excel fallback)
+odfpy>=1.4.1             # .ods write
+
+# ---- Google Sheets ----------------------------------------------------------
+google-api-python-client>=2.130.0
+google-auth>=2.29.0
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+
+# ---- Optional HTTP surface (FastAPI) ---------------------------------------
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+sse-starlette>=2.1.0
+
+# ---- Optional MCP server ----------------------------------------------------
+mcp>=2.0.0,<3
+
+# ---- Windows / Microsoft Excel automation ----------------------------------
+pywin32>=306; sys_platform == "win32"

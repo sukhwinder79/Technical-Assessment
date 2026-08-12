@@ -1,0 +1,51 @@
+services:
+  agent-api:
+    build: .
+    image: agentic-sheets:latest
+    container_name: agentic-sheets-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      # Container overrides — Excel cannot run here, so keep it headless.
+      WORKSPACE_DIR: /app/workspace
+      LOG_DIR: /app/logs
+      MEMORY_DIR: /app/.agent_memory
+      TOOLS_CONFIG: /app/config/tools.yaml
+      LOG_JSON: "true"
+      EXCEL_VISIBLE: "false"
+      EXCEL_KEEP_OPEN: "false"
+      GOOGLE_CREDENTIALS_FILE: /app/credentials/service_account.json
+    volumes:
+      # Generated CSV / XLSX / ODS files land on the host so you can open them.
+      - ./workspace:/app/workspace
+      - ./logs:/app/logs
+      - ./.agent_memory:/app/.agent_memory
+      # Read-only credentials mount.
+      - ./credentials:/app/credentials:ro
+    restart: unless-stopped
+
+  # One-shot CLI runner:
+  #   docker compose run --rm agent-cli run "Create an employee CSV and upload it to Google Sheets."
+  agent-cli:
+    build: .
+    image: agentic-sheets:latest
+    profiles: ["cli"]
+    env_file:
+      - .env
+    environment:
+      WORKSPACE_DIR: /app/workspace
+      LOG_DIR: /app/logs
+      MEMORY_DIR: /app/.agent_memory
+      TOOLS_CONFIG: /app/config/tools.yaml
+      EXCEL_VISIBLE: "false"
+      EXCEL_KEEP_OPEN: "false"
+      GOOGLE_CREDENTIALS_FILE: /app/credentials/service_account.json
+    volumes:
+      - ./workspace:/app/workspace
+      - ./logs:/app/logs
+      - ./.agent_memory:/app/.agent_memory
+      - ./credentials:/app/credentials:ro
+    entrypoint: ["agentic-sheets"]
+    command: ["doctor"]

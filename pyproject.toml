@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentic-sheets"
+version = "1.0.0"
+description = "Autonomous AI agent that generates spreadsheet data and imports it into Microsoft Excel and Google Sheets."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Technical Assessment Submission" }]
+keywords = ["ai-agent", "llm", "tool-calling", "excel", "google-sheets", "mcp", "claude"]
+
+# Dependencies are declared ONCE, in requirements.txt, and read from there.
+# The assessment asks for a requirements file and the Dockerfile installs it as
+# its own cached layer, so it has to exist — duplicating the list here as well
+# would just let the two drift apart.
+dynamic = ["dependencies"]
+
+[project.optional-dependencies]
+# Test-only extras, so `pip install -e ".[dev]"` works. These are the only
+# packages not needed at runtime; everything else lives in requirements.txt.
+dev = ["pytest>=8.2.0", "pytest-cov>=5.0.0"]
+
+[project.scripts]
+agentic-sheets = "agentic_sheets.cli:entrypoint"
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+# The web UI ships inside the package so `pip install` and the Docker image
+# both serve it without extra steps.
+"agentic_sheets.api" = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q -m 'not slow'"
+markers = [
+  "slow: opt-in tests that launch and quit external applications (run with: pytest -m slow)",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"

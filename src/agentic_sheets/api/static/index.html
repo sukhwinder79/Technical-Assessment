@@ -1,0 +1,893 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Agentic Spreadsheet Agent</title>
+<style>
+  /* ---------------------------------------------------------------------
+     Self-contained on purpose: no CDN, no build step, no framework.
+     The page works offline and inside the Docker image.
+     ------------------------------------------------------------------ */
+  :root {
+    --bg: #0f1115;
+    --panel: #161a21;
+    --panel-2: #1b202a;
+    --border: #262d39;
+    --text: #e6e9ef;
+    --muted: #8b95a7;
+    --accent: #6aa9ff;
+    --ok: #5bd68f;
+    --warn: #f0a24b;
+    --err: #f4685f;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --radius: 10px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f7f9; --panel: #ffffff; --panel-2: #f1f3f6; --border: #dfe3ea;
+      --text: #16191f; --muted: #5f6878; --accent: #1f6feb;
+      --ok: #1a7f4b; --warn: #a2650f; --err: #c0362c;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: 15px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 20px 80px; }
+
+  /* ---- header ---- */
+  header { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;
+           justify-content: space-between; margin-bottom: 22px; }
+  h1 { font-size: 21px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 13.5px; margin-top: 3px; }
+  #env { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-family: var(--mono); font-size: 11.5px; padding: 4px 9px;
+    border: 1px solid var(--border); border-radius: 999px;
+    background: var(--panel); color: var(--muted); white-space: nowrap;
+  }
+  .chip b { color: var(--text); font-weight: 600; }
+  .chip.ok  { border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
+  .chip.warn{ border-color: color-mix(in srgb, var(--warn) 45%, var(--border)); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+         margin-right: 6px; vertical-align: 1px; background: var(--muted); }
+  .dot.ok { background: var(--ok); } .dot.warn { background: var(--warn); }
+  .dot.err { background: var(--err); }
+
+  /* ---- cards ---- */
+  .card { background: var(--panel); border: 1px solid var(--border);
+          border-radius: var(--radius); margin-bottom: 16px; overflow: hidden; }
+  .card > h2 {
+    margin: 0; padding: 11px 16px; font-size: 12px; font-weight: 600;
+    letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted);
+    border-bottom: 1px solid var(--border); background: var(--panel-2);
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  }
+  .card > h2 .meta { font-family: var(--mono); text-transform: none;
+                     letter-spacing: 0; font-weight: 400; font-size: 11.5px; }
+  .body { padding: 16px; }
+  .hidden { display: none !important; }
+
+  /* ---- prompt form ---- */
+  textarea {
+    width: 100%; min-height: 74px; resize: vertical; padding: 12px 13px;
+    font-family: var(--sans); font-size: 15px; line-height: 1.5;
+    color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  textarea:focus, select:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .examples { display: flex; flex-wrap: wrap; gap: 7px; margin: 11px 0 3px; }
+  .examples button {
+    font-family: var(--sans); font-size: 12.5px; padding: 5px 11px; cursor: pointer;
+    color: var(--muted); background: transparent;
+    border: 1px dashed var(--border); border-radius: 999px;
+  }
+  .examples button:hover { color: var(--text); border-color: var(--accent); border-style: solid; }
+  .controls { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-end;
+              margin-top: 15px; padding-top: 15px; border-top: 1px solid var(--border); }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 11.5px; color: var(--muted); letter-spacing: 0.03em; }
+  select, input[type=text] {
+    font-family: var(--mono); font-size: 12.5px; padding: 7px 9px; min-width: 130px;
+    color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 7px;
+  }
+  .check { display: flex; align-items: center; gap: 7px; font-size: 13px;
+           color: var(--muted); padding-bottom: 7px; cursor: pointer; }
+  .spacer { flex: 1 1 auto; }
+  #run {
+    font-family: var(--sans); font-size: 14px; font-weight: 600; cursor: pointer;
+    padding: 9px 22px; border-radius: 8px; border: 1px solid transparent;
+    background: var(--accent); color: #08111f;
+  }
+  #run:hover:not(:disabled) { filter: brightness(1.08); }
+  #run:disabled { opacity: 0.5; cursor: default; }
+  #cancelHint { font-size: 12.5px; color: var(--muted); }
+
+  /* ---- plan ---- */
+  .goal { font-style: italic; color: var(--muted); margin: 0 0 12px; }
+  ol.plan { margin: 0; padding-left: 22px; }
+  ol.plan li { margin-bottom: 9px; }
+  ol.plan .title { font-weight: 600; }
+  ol.plan .tool { font-family: var(--mono); font-size: 12px; color: var(--accent); margin-left: 6px; }
+  ol.plan .detail { color: var(--muted); font-size: 13.5px; }
+  ol.plan .fallback { color: var(--warn); font-size: 12.5px; font-family: var(--mono); }
+  .risks { margin: 13px 0 0; padding: 10px 13px; border-left: 2px solid var(--warn);
+           background: var(--panel-2); border-radius: 0 6px 6px 0; }
+  .risks ul { margin: 5px 0 0; padding-left: 18px; color: var(--muted); font-size: 13.5px; }
+  .risks strong { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--warn); }
+
+  /* ---- live trace ---- */
+  #trace { font-family: var(--mono); font-size: 12.5px; line-height: 1.75;
+           max-height: 380px; overflow-y: auto; }
+  .line { display: flex; gap: 9px; padding: 1px 0; }
+  .line .g { flex: 0 0 14px; text-align: center; }
+  .line .t { flex: 1 1 auto; overflow-wrap: anywhere; }
+  .line.info .g, .line.info .t { color: var(--muted); }
+  .line.start .g { color: var(--accent); }
+  .line.ok .g { color: var(--ok); }
+  .line.fail .g { color: var(--err); }
+  .line.fail .t { color: var(--err); }
+  .line.retry .g, .line.retry .t { color: var(--warn); }
+  .line .dur { color: var(--muted); }
+  #narration { margin: 10px 0 0; padding: 11px 13px; border-radius: 7px;
+               background: var(--panel-2); color: var(--muted);
+               font-family: var(--sans); font-size: 13.5px; font-style: italic;
+               white-space: pre-wrap; }
+  .working { display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+             background: var(--accent); animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 0.25; } 50% { opacity: 1; } }
+
+  /* ---- report ---- */
+  .pill { font-family: var(--mono); font-size: 11.5px; font-weight: 600;
+          padding: 3px 10px; border-radius: 999px; letter-spacing: 0.05em; }
+  .pill.completed { color: #062313; background: var(--ok); }
+  .pill.partial   { color: #241703; background: var(--warn); }
+  .pill.failed    { color: #2a0b09; background: var(--err); }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { text-align: left; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+       color: var(--muted); font-weight: 600; padding: 0 10px 7px 0; }
+  td { padding: 7px 10px 7px 0; border-top: 1px solid var(--border); vertical-align: top; }
+  td.tool { font-family: var(--mono); font-size: 12.5px; color: var(--accent); white-space: nowrap; }
+  td.num, th.num { text-align: right; color: var(--muted); font-family: var(--mono); font-size: 12px; }
+  .st { font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.05em; }
+  .st.succeeded { color: var(--ok); } .st.failed { color: var(--err); } .st.rejected { color: var(--warn); }
+  .artifacts { display: grid; grid-template-columns: minmax(150px, auto) 1fr;
+               gap: 5px 16px; font-size: 13px; align-items: baseline; }
+  .artifacts dt { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .artifacts dd { margin: 0; overflow-wrap: anywhere; }
+  .artifacts a { color: var(--accent); }
+
+  /* ---- generated files ---- */
+  .files { display: flex; flex-direction: column; gap: 7px; }
+  .file { display: flex; flex-wrap: wrap; align-items: center; gap: 9px;
+          padding: 8px 11px; border: 1px solid var(--border); border-radius: 7px;
+          background: var(--panel-2); }
+  .file .fname { font-family: var(--mono); font-size: 12.5px; flex: 1 1 200px;
+                 overflow-wrap: anywhere; }
+  .file .fsize { font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+  .btn { font-family: var(--sans); font-size: 12px; padding: 4px 11px; cursor: pointer;
+         color: var(--text); background: transparent; text-decoration: none;
+         border: 1px solid var(--border); border-radius: 6px; white-space: nowrap; }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .preview { margin-top: 10px; overflow-x: auto; border: 1px solid var(--border);
+             border-radius: 7px; }
+  .preview table { font-size: 12.5px; min-width: 100%; }
+  .preview th { position: sticky; top: 0; background: var(--panel-2);
+                padding: 7px 11px; white-space: nowrap; border-bottom: 1px solid var(--border); }
+  .preview td { padding: 5px 11px; white-space: nowrap; font-family: var(--mono);
+                font-size: 12px; border-top: 1px solid var(--border); }
+  .preview .rownum { color: var(--muted); text-align: right; }
+  .preview-note { font-size: 12px; color: var(--muted); padding: 7px 11px; }
+  .report p { margin: 0 0 9px; } .report ul { margin: 0 0 9px; padding-left: 20px; }
+  .report li { margin-bottom: 4px; }
+  .report code { font-family: var(--mono); font-size: 12.5px; padding: 1px 5px;
+                 background: var(--panel-2); border-radius: 4px; }
+  .banner { padding: 11px 13px; border-radius: 7px; font-size: 13.5px;
+            border: 1px solid; margin-bottom: 14px; }
+  .banner.err { color: var(--err); border-color: color-mix(in srgb, var(--err) 45%, var(--border));
+                background: color-mix(in srgb, var(--err) 9%, transparent); }
+  footer { margin-top: 26px; color: var(--muted); font-size: 12.5px; text-align: center; }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Agentic Spreadsheet Agent</h1>
+      <div class="sub">One instruction &rarr; CSV, Microsoft Excel, Google Sheets &mdash; planned and verified by the agent.</div>
+    </div>
+    <div id="env"><span class="chip">checking environment&hellip;</span></div>
+  </header>
+
+  <!-- ------------------------------------------------ prompt -->
+  <form class="card" id="form" autocomplete="off">
+    <h2>Instruction</h2>
+    <div class="body">
+      <textarea id="instruction" spellcheck="false">Create a sample employee CSV and import it into Excel and Google Sheets.</textarea>
+
+      <div class="examples" id="examples"></div>
+
+      <div class="controls">
+        <div class="field">
+          <label for="provider">Provider</label>
+          <select id="provider">
+            <option value="">(configured default)</option>
+            <option value="groq">groq &mdash; free</option>
+            <option value="anthropic">anthropic</option>
+            <option value="openai">openai</option>
+            <option value="openrouter">openrouter</option>
+            <option value="together">together</option>
+            <option value="ollama">ollama &mdash; local</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="model">Model</label>
+          <select id="model">
+            <option value="">(configured default)</option>
+            <option value="llama-3.3-70b-versatile">llama-3.3-70b &mdash; 12k/min, fastest</option>
+            <option value="openai/gpt-oss-120b">gpt-oss-120b &mdash; 8k/min, strongest</option>
+            <option value="llama-3.1-8b-instant">llama-3.1-8b &mdash; broken, don't</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="session">Session</label>
+          <input type="text" id="session" placeholder="(new each run)" />
+        </div>
+        <label class="check"><input type="checkbox" id="planning" checked /> Plan first</label>
+        <label class="check"><input type="checkbox" id="continueSession" /> Continue session</label>
+        <div class="spacer"></div>
+        <button id="run" type="submit">Run agent</button>
+      </div>
+      <div id="modelWarning" class="hidden"
+           style="margin-top:10px;font-size:12.5px;color:var(--warn)"></div>
+    </div>
+  </form>
+
+  <div id="fatal" class="banner err hidden"></div>
+
+  <!-- ------------------------------------------------ workspace files -->
+  <section class="card" id="workspaceCard">
+    <h2>
+      Workspace files
+      <span class="meta">
+        <button class="btn" type="button" id="refreshFiles">Refresh</button>
+      </span>
+    </h2>
+    <div class="body">
+      <div class="files" id="workspaceFiles"></div>
+      <div id="workspacePreview"></div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------ plan -->
+  <section class="card hidden" id="planCard">
+    <h2>Plan <span class="meta" id="planMeta"></span></h2>
+    <div class="body">
+      <p class="goal" id="planGoal"></p>
+      <ol class="plan" id="planSteps"></ol>
+      <div class="risks hidden" id="risksBox">
+        <strong>Risks noted</strong>
+        <ul id="risks"></ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------ live trace -->
+  <section class="card hidden" id="traceCard">
+    <h2>Activity <span class="meta" id="traceMeta"></span></h2>
+    <div class="body">
+      <div id="trace"></div>
+      <div id="narration" class="hidden"></div>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------ report -->
+  <section class="card hidden" id="reportCard">
+    <h2>Result <span class="meta" id="reportMeta"></span></h2>
+    <div class="body">
+      <table id="stepsTable" class="hidden">
+        <thead>
+          <tr>
+            <th class="num">#</th><th>Tool</th><th>Status</th>
+            <th class="num">Time</th><th>Detail</th>
+          </tr>
+        </thead>
+        <tbody id="stepsBody"></tbody>
+      </table>
+
+      <h3 class="hidden" id="artifactsHead"
+          style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px">
+        Artifacts
+      </h3>
+      <dl class="artifacts" id="artifacts"></dl>
+
+      <h3 class="hidden" id="filesHead"
+          style="font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:20px 0 8px">
+        Generated files
+      </h3>
+      <div class="files" id="files"></div>
+      <div id="previewBox"></div>
+
+      <div class="report" id="report" style="margin-top:18px"></div>
+    </div>
+  </section>
+
+  <footer>
+    <a href="/docs">REST API docs</a> &middot; progress streamed over Server-Sent Events &middot;
+    the CLI (<code>agentic-sheets run</code>) renders the same event stream
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+/** Short label + the full prompt. The label keeps the chips readable; the
+ *  title attribute shows the whole thing on hover. */
+const EXAMPLES = [
+  ["The assessment prompt",
+   "Create a sample employee CSV and import it into Excel and Google Sheets."],
+  ["50 rows, both destinations",
+   "Generate 50 employee records, open them in Excel, save the workbook, then upload the same data to a Google Sheet and confirm both imports."],
+  ["Three formats + Sheets",
+   "I need sample HR data in three formats — CSV, XLSX and ODS — plus a Google Sheet. Verify every destination and tell me the row counts."],
+  ["Excel only, skip Sheets",
+   "Build a 25-row employee dataset, import it into Excel only (skip Google Sheets), and confirm the workbook has the right headers."],
+  ["Reproducible (seed 42)",
+   "Use reproducible data (seed 42) so I get the same 30 rows every time, then load it into Excel and Google Sheets."],
+  ["ODS copy, no Sheets",
+   "Generate 30 employee records, import them into Excel, and also give me an ODS copy. Skip Google Sheets."]
+];
+
+/** Models whose per-minute budget is tight, or which simply don't work. */
+const MODEL_NOTES = {
+  "llama-3.1-8b-instant":
+    "This model cannot emit a parsable tool call for this workload — the run will fail after 3 retries. It is listed only so you can see that for yourself.",
+  "openai/gpt-oss-120b":
+    "8,000 tokens/minute on the free tier, so the agent will pause between turns. Reliable, but a run takes ~3 minutes."
+};
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;   // textContent: never inject markup
+  return node;
+};
+
+/* ---------------------------------------------------------------- header */
+
+function chip(label, value, state) {
+  const node = el("span", "chip" + (state ? " " + state : ""));
+  if (state) node.appendChild(el("span", "dot " + (state === "warn" ? "warn" : "ok")));
+  node.appendChild(document.createTextNode(label + " "));
+  node.appendChild(el("b", null, value));
+  return node;
+}
+
+async function loadEnvironment() {
+  const box = $("env");
+  box.textContent = "";
+  try {
+    const health = await (await fetch("/health")).json();
+    const tools = await (await fetch("/tools")).json();
+
+    box.appendChild(chip("provider", health.llm_provider, health.api_key_configured ? "ok" : "warn"));
+    box.appendChild(chip("model", health.model));
+    box.appendChild(chip("excel",
+      health.excel_com_available ? "COM ready" : "fallback",
+      health.excel_com_available ? "ok" : "warn"));
+    box.appendChild(chip("sheets", health.google_auth_mode,
+      health.google_auth_mode === "disabled" ? "warn" : "ok"));
+    box.appendChild(chip("tools", String(tools.enabled.length)));
+
+    if (!health.api_key_configured) {
+      showFatal("No LLM API key is configured on the server. Add one to .env "
+        + "(a free Groq key works: https://console.groq.com/keys), then restart.");
+    }
+  } catch (err) {
+    box.appendChild(chip("server", "unreachable", "warn"));
+  }
+}
+
+function showFatal(message) {
+  const box = $("fatal");
+  box.textContent = message;
+  box.classList.remove("hidden");
+}
+
+/* ---------------------------------------------------------------- trace */
+
+const GLYPHS = {
+  start:  "→",   // →
+  ok:     "✔",   // ✔
+  fail:   "✘",   // ✘
+  retry:  "↻",   // ↻
+  info:   "·"    // ·
+};
+
+let liveLine = null;   // the "working…" indicator, removed on completion
+
+function trace(kind, text, duration) {
+  clearLive();
+  const line = el("div", "line " + kind);
+  line.appendChild(el("span", "g", GLYPHS[kind] || GLYPHS.info));
+  const body = el("span", "t", text);
+  if (duration !== undefined && duration !== null) {
+    body.appendChild(el("span", "dur", "  " + duration + "s"));
+  }
+  line.appendChild(body);
+  $("trace").appendChild(line);
+  $("trace").scrollTop = $("trace").scrollHeight;
+  return line;
+}
+
+function showLive(text) {
+  clearLive();
+  liveLine = el("div", "line info");
+  const glyph = el("span", "g");
+  glyph.appendChild(el("span", "working"));
+  liveLine.appendChild(glyph);
+  liveLine.appendChild(el("span", "t", text));
+  $("trace").appendChild(liveLine);
+  $("trace").scrollTop = $("trace").scrollHeight;
+}
+
+function clearLive() {
+  if (liveLine && liveLine.parentNode) liveLine.parentNode.removeChild(liveLine);
+  liveLine = null;
+}
+
+/* ---------------------------------------------------------------- plan */
+
+function renderPlan(plan) {
+  const card = $("planCard");
+  if (!plan || !plan.steps || !plan.steps.length) {
+    card.classList.add("hidden");
+    return;
+  }
+  $("planGoal").textContent = plan.goal || "";
+  $("planMeta").textContent = plan.steps.length + " steps";
+
+  const list = $("planSteps");
+  list.textContent = "";
+  for (const step of plan.steps) {
+    const item = el("li");
+    item.appendChild(el("span", "title", step.title || ""));
+    if (step.tool && step.tool !== "none") item.appendChild(el("span", "tool", step.tool));
+    if (step.detail) { item.appendChild(el("br")); item.appendChild(el("span", "detail", step.detail)); }
+    const fb = (step.fallback || "").trim();
+    if (fb && fb.toLowerCase() !== "none") {
+      item.appendChild(el("br"));
+      item.appendChild(el("span", "fallback", "fallback: " + fb));
+    }
+    list.appendChild(item);
+  }
+
+  const risks = plan.risks || [];
+  $("risksBox").classList.toggle("hidden", risks.length === 0);
+  const riskList = $("risks");
+  riskList.textContent = "";
+  risks.forEach((risk) => riskList.appendChild(el("li", null, risk)));
+
+  card.classList.remove("hidden");
+}
+
+/* ---------------------------------------------------------------- report */
+
+/** Minimal, injection-safe markdown: escape first, then style. */
+function miniMarkdown(source) {
+  const escape = (text) => text
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  const inline = (text) => escape(text)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/(https?:\/\/[^\s<)]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+
+  const html = [];
+  let list = null;
+  for (const raw of (source || "").split("\n")) {
+    const line = raw.trim();
+    const bullet = line.match(/^[-*]\s+(.*)$/);
+    if (bullet) {
+      if (!list) { list = []; }
+      list.push("<li>" + inline(bullet[1]) + "</li>");
+      continue;
+    }
+    if (list) { html.push("<ul>" + list.join("") + "</ul>"); list = null; }
+    if (line) html.push("<p>" + inline(line) + "</p>");
+  }
+  if (list) html.push("<ul>" + list.join("") + "</ul>");
+  return html.join("");
+}
+
+const IS_URL = /^https?:\/\//i;
+
+function renderReport(payload) {
+  const result = payload.result;
+  const status = payload.status || "failed";
+
+  const meta = $("reportMeta");
+  meta.textContent = "";
+  const pill = el("span", "pill " + status, status.toUpperCase());
+  meta.appendChild(pill);
+  if (result) {
+    const ok = (result.steps || []).filter((s) => s.status === "succeeded").length;
+    const usage = result.usage || {};
+    meta.appendChild(document.createTextNode(
+      "  " + ok + "/" + (result.steps || []).length + " steps ok · "
+      + result.iterations + " turns · " + result.duration_s + "s · "
+      + (usage.input_tokens || 0) + " in / " + (usage.output_tokens || 0) + " out tokens"));
+  }
+
+  // steps
+  const body = $("stepsBody");
+  body.textContent = "";
+  const steps = (result && result.steps) || [];
+  $("stepsTable").classList.toggle("hidden", steps.length === 0);
+  const LABEL = { succeeded: "SUCCESS", failed: "FAILED", rejected: "SKIPPED" };
+  for (const step of steps) {
+    const row = el("tr");
+    row.appendChild(el("td", "num", String(step.index)));
+    row.appendChild(el("td", "tool", step.tool));
+    const status_cell = el("td");
+    status_cell.appendChild(el("span", "st " + step.status, LABEL[step.status] || step.status));
+    row.appendChild(status_cell);
+    row.appendChild(el("td", "num", step.duration_s + "s"));
+    let detail = step.summary || step.error || "";
+    if (step.attempts > 1) detail += "  (after " + step.attempts + " attempts)";
+    if (step.remediation) detail += " — " + step.remediation;
+    row.appendChild(el("td", null, detail));
+    body.appendChild(row);
+  }
+
+  // artifacts
+  const artifacts = (result && result.artifacts) || {};
+  const keys = Object.keys(artifacts);
+  const list = $("artifacts");
+  list.textContent = "";
+  $("artifactsHead").classList.toggle("hidden", keys.length === 0);
+  for (const key of keys) {
+    list.appendChild(el("dt", null, key));
+    const value = String(artifacts[key]);
+    const dd = el("dd");
+    if (IS_URL.test(value)) {
+      const link = el("a", null, value);
+      link.href = value; link.target = "_blank"; link.rel = "noopener";
+      dd.appendChild(link);
+    } else {
+      dd.textContent = value;
+    }
+    list.appendChild(dd);
+  }
+
+  // narrative report
+  $("report").innerHTML = miniMarkdown(
+    (result && result.final_message) || payload.error || "");
+
+  $("reportCard").classList.remove("hidden");
+  loadFiles(artifacts);
+}
+
+/* ------------------------------------------------------- generated files */
+
+function humanSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+
+/** Render a list of files with View/Download buttons into `container`. */
+function renderFiles(files, container, previewBox) {
+  container.textContent = "";
+  previewBox.textContent = "";
+
+  if (!files.length) {
+    container.appendChild(el("div", "preview-note",
+      "No files yet — run the agent, and whatever it writes will appear here."));
+    return;
+  }
+
+  for (const file of files) {
+    const row = el("div", "file");
+    row.appendChild(el("span", "fname", file.name));
+    row.appendChild(el("span", "fsize", humanSize(file.size_bytes)));
+
+    if (file.previewable) {
+      const view = el("button", "btn", "View data");
+      view.type = "button";
+      view.addEventListener("click", () => showPreview(file.name, previewBox));
+      row.appendChild(view);
+    }
+
+    const download = el("a", "btn", "Download");
+    download.href = file.download_url;
+    download.setAttribute("download", "");
+    row.appendChild(download);
+
+    container.appendChild(row);
+  }
+}
+
+async function fetchFiles() {
+  try {
+    return (await (await fetch("/files")).json()).files || [];
+  } catch (err) {
+    return [];
+  }
+}
+
+/** Everything in the workspace, independent of any run. Costs no tokens, so it
+ *  is the cheap way to inspect earlier output — including on camera. */
+async function loadWorkspaceFiles() {
+  const files = await fetchFiles();
+  renderFiles(files, $("workspaceFiles"), $("workspacePreview"));
+}
+
+/** Just the files the finished run produced. */
+async function loadFiles(artifacts) {
+  const files = await fetchFiles();
+  const produced = new Set(
+    Object.values(artifacts || {})
+      .filter((v) => typeof v === "string")
+      .map((v) => v.split(/[\\/]/).pop()));
+  const shown = produced.size ? files.filter((f) => produced.has(f.name)) : files.slice(0, 6);
+
+  $("filesHead").classList.toggle("hidden", shown.length === 0);
+  renderFiles(shown, $("files"), $("previewBox"));
+  loadWorkspaceFiles();      // keep the workspace card in step
+}
+
+/** Render a spreadsheet's actual contents inline — this is how you see what
+ *  Excel produced without leaving the browser. */
+async function showPreview(name, box) {
+  box.textContent = "";
+  box.appendChild(el("div", "preview-note", "Loading " + name + "…"));
+
+  let data;
+  try {
+    const response = await fetch("/files/" + encodeURIComponent(name) + "/preview?rows=25");
+    if (!response.ok) throw new Error((await response.json()).detail || "HTTP " + response.status);
+    data = await response.json();
+  } catch (err) {
+    box.textContent = "";
+    box.appendChild(el("div", "preview-note", "Could not preview: " + err.message));
+    return;
+  }
+
+  box.textContent = "";
+  const wrap = el("div", "preview");
+  const table = el("table");
+
+  const head = el("tr");
+  head.appendChild(el("th", "rownum", "#"));
+  data.columns.forEach((c) => head.appendChild(el("th", null, c)));
+  const thead = document.createElement("thead");
+  thead.appendChild(head);
+  table.appendChild(thead);
+
+  const body = document.createElement("tbody");
+  data.rows.forEach((row, index) => {
+    const tr = el("tr");
+    tr.appendChild(el("td", "rownum", String(index + 1)));
+    row.forEach((cell) => tr.appendChild(el("td", null, cell)));
+    body.appendChild(tr);
+  });
+  table.appendChild(body);
+  wrap.appendChild(table);
+  box.appendChild(wrap);
+
+  const note = `${data.name} — ${data.total_rows} data rows, ${data.columns.length} columns`
+    + (data.truncated ? ` (showing the first ${data.rows.length})` : "");
+  box.appendChild(el("div", "preview-note", note));
+}
+
+/* ---------------------------------------------------------------- run */
+
+const EVENT_TYPES = [
+  "run_started", "planning_started", "plan_ready", "llm_turn_started", "assistant_text",
+  "tool_started", "tool_succeeded", "tool_failed", "tool_retrying", "run_finished", "run_failed"
+];
+
+let source = null;
+
+let elapsedTimer = null;
+
+/** A three-minute run needs to look alive, or it reads as a hang. */
+function setBusy(busy) {
+  const button = $("run");
+  button.disabled = busy;
+
+  if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
+  if (!busy) {
+    button.textContent = "Run agent";
+    return;
+  }
+
+  const started = performance.now();
+  const tick = () => {
+    const seconds = Math.floor((performance.now() - started) / 1000);
+    button.textContent = `Running… ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  };
+  tick();
+  elapsedTimer = setInterval(tick, 1000);
+}
+
+async function start(event) {
+  event.preventDefault();
+  if (source) { source.close(); source = null; }
+
+  const instruction = $("instruction").value.trim();
+  if (!instruction) return;
+
+  // reset
+  $("fatal").classList.add("hidden");
+  $("planCard").classList.add("hidden");
+  $("reportCard").classList.add("hidden");
+  $("trace").textContent = "";
+  $("narration").textContent = "";
+  $("narration").classList.add("hidden");
+  $("traceCard").classList.remove("hidden");
+  $("traceMeta").textContent = "";
+  setBusy(true);
+
+  const request = {
+    instruction: instruction,
+    continue_session: $("continueSession").checked,
+    planning: $("planning").checked
+  };
+  if ($("provider").value) request.provider = $("provider").value;
+  if ($("model").value.trim()) request.model = $("model").value.trim();
+  if ($("session").value.trim()) request.session_id = $("session").value.trim();
+
+  let accepted;
+  try {
+    const response = await fetch("/runs", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(request)
+    });
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    accepted = await response.json();
+  } catch (err) {
+    setBusy(false);
+    showFatal("Could not start the run: " + err.message);
+    return;
+  }
+
+  $("traceMeta").textContent = "run " + accepted.run_id;
+  showLive("connecting to the progress stream…");
+  listen(accepted.run_id);
+}
+
+function listen(runId) {
+  source = new EventSource("/runs/" + runId + "/events");
+
+  // Every event is *named* (its type), so a generic onmessage would never fire.
+  EVENT_TYPES.forEach((type) => {
+    source.addEventListener(type, (event) => {
+      let payload;
+      try { payload = JSON.parse(event.data); } catch (err) { return; }
+      handle(type, payload);
+    });
+  });
+
+  source.addEventListener("done", async () => {
+    clearLive();
+    if (source) { source.close(); source = null; }
+    // The live narration has served its purpose; the Result card below now
+    // holds the agent's authoritative report, so don't show it twice.
+    $("narration").classList.add("hidden");
+    try {
+      const final = await (await fetch("/runs/" + runId)).json();
+      renderReport(final);
+    } catch (err) {
+      showFatal("The run finished but its report could not be fetched: " + err.message);
+    }
+    setBusy(false);
+  });
+
+  source.onerror = () => {
+    // EventSource retries on its own; only give up once the stream is closed.
+    if (source && source.readyState === EventSource.CLOSED) {
+      clearLive();
+      setBusy(false);
+      showFatal("Lost the connection to the progress stream. The run may still be going — "
+        + "reload and check /runs/" + runId + ".");
+    }
+  };
+}
+
+function handle(type, payload) {
+  const data = payload.data || {};
+  const message = payload.message || "";
+
+  switch (type) {
+    case "run_started":
+      trace("info", "run " + (data.run_id || "") + " on " + (data.model || "the configured model"));
+      break;
+
+    case "planning_started":
+      showLive(message);
+      break;
+
+    case "plan_ready":
+      renderPlan(data.plan);
+      trace("info", data.plan ? message : message);
+      break;
+
+    case "llm_turn_started": {
+      showLive(message);
+      // Blank line between turns so the running narration stays legible.
+      const box = $("narration");
+      if (box.textContent) box.textContent += "\n\n";
+      break;
+    }
+
+    case "assistant_text": {
+      const box = $("narration");
+      box.classList.remove("hidden");
+      box.textContent += message;      // textContent: model output is never markup
+      break;
+    }
+
+    case "tool_started":
+      trace("start", message);
+      break;
+
+    case "tool_succeeded":
+      trace("ok", message);
+      break;
+
+    case "tool_failed":
+      trace("fail", message);
+      break;
+
+    case "tool_retrying":
+      trace("retry", message);
+      break;
+
+    case "run_failed":
+      trace("fail", message);
+      break;
+
+    case "run_finished":
+      trace("info", message);
+      break;
+  }
+}
+
+/* ---------------------------------------------------------------- boot */
+
+EXAMPLES.forEach(([label, text]) => {
+  const button = el("button", null, label);
+  button.type = "button";
+  button.title = text;
+  button.addEventListener("click", () => { $("instruction").value = text; });
+  $("examples").appendChild(button);
+});
+
+// Warn before a model choice wastes a run, rather than after.
+$("model").addEventListener("change", () => {
+  const note = MODEL_NOTES[$("model").value];
+  const box = $("modelWarning");
+  box.textContent = note || "";
+  box.classList.toggle("hidden", !note);
+});
+
+$("refreshFiles").addEventListener("click", loadWorkspaceFiles);
+$("form").addEventListener("submit", start);
+
+loadEnvironment();
+loadWorkspaceFiles();
+</script>
+</body>
+</html>
