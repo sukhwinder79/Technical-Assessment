@@ -374,8 +374,10 @@ a spreadsheet (see above), so you point it at one you own.
    GOOGLE_SPREADSHEET_ID=<the id from step 6>
    ```
 
-`GOOGLE_SHARE_WITH_EMAIL` is only used for sheets the agent creates itself, so it is not
-needed in this mode.
+`GOOGLE_SHARE_WITH_EMAIL` is optional in this mode — the sheet already belongs to you.
+Setting it to your own address is still the safer default: the grant is a no-op on a sheet
+you own, and it keeps the link openable if you ever clear `GOOGLE_SPREADSHEET_ID` and let
+the agent create a sheet of its own.
 
 > A Google Workspace **Shared Drive** removes the limitation — the Drive owns the storage,
 > not the account — so a service account can create sheets inside one. That is the right

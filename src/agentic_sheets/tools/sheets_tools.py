@@ -372,7 +372,11 @@ class GoogleSheetsImportTool(Tool):
 
         shared_with = None
         share_target = args.share_with_email or settings.google_share_with_email
-        if created and share_target:
+        # Applied on reused spreadsheets too, not just freshly created ones: when
+        # GOOGLE_SPREADSHEET_ID points at a service-account-owned sheet, skipping
+        # this leaves a link nobody but the credentials can open. Granting an
+        # existing permission is a no-op on Drive's side.
+        if share_target:
             shared_with = self._share(drive, spreadsheet_id, share_target)
 
         ctx.memory.remember("last_spreadsheet_id", spreadsheet_id)
@@ -393,10 +397,10 @@ class GoogleSheetsImportTool(Tool):
             "updated_range": update.get("updatedRange"),
             "shared_with": shared_with,
         }
-        if created and share_target and not shared_with:
+        if share_target and not shared_with:
             result["warning"] = (
-                f"The spreadsheet was created but could not be shared with {share_target}. "
-                "Only the credentialed account can open it."
+                f"The data was written but the spreadsheet could not be shared with "
+                f"{share_target}. Only accounts that already have access can open it."
             )
         log.info("sheets.import.done", **{k: v for k, v in result.items() if k != "ok"})
         return result
